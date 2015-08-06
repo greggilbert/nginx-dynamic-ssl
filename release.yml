@@ -1,0 +1,20 @@
+---
+- hosts: all
+  sudo: yes
+  
+  tasks:
+
+    - name: create cert dir
+      file: path=/etc/nginx/cert/ state=directory mode=0755
+
+    - name: Install self-signed cert
+      copy: src=cert-v2/ dest=/etc/nginx/cert directory_mode=yes
+    
+    - name: Create keys temp dir
+      file: path=/tmp/keys state=directory mode=1777
+    
+    - name: Install conf
+      copy: src=conf/nginx.conf dest=/etc/nginx/nginx.conf
+    
+    - name: Restart nginx
+      service: name=nginx state=restarted

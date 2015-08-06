@@ -1,0 +1,187 @@
+---
+- hosts: all
+  sudo: yes
+
+  vars:
+    nginx_version: "1.9.2"
+
+    openssl_version: "1.0.2d"
+    luajit_version: "2.0.4"
+    ngx_lua_version: "0.9.16"
+    ngx_devel_kit_version: "0.2.19"
+    ngx_postgres_version: "1.0rc7"
+    luarocks_version: "2.2.2"
+
+    nginx_dir: "/etc/nginx"
+    dependencies:
+    - build-essential
+    - libc6
+    - libpcre3
+    - libpcre3-dev
+    - libpcrecpp0
+    - libssl0.9.8
+    - libssl-dev
+    - zlib1g
+    - zlib1g-dev
+    - lsb-base
+    - openssl
+    - libgeoip1
+    - libgeoip-dev
+    - google-perftools
+    - libgoogle-perftools-dev
+    - libperl-dev
+    - libgd2-xpm-dev
+    - libatomic-ops-dev
+    - libxml2-dev
+    - libxslt1-dev
+    - python-dev
+    - libpq5
+    - libpq-dev
+    - libreadline-dev
+    - libncurses5-dev
+    - lua5.1
+    - liblua5.1-0-dev
+    - perl
+    - git
+    - zip
+    flags:
+    - "--sbin-path=/usr/sbin/nginx"
+    - "--conf-path=/etc/nginx/nginx.conf"
+    - "--without-http_fastcgi_module"
+    - "--without-http_geo_module"
+    - "--without-http_memcached_module"
+    - "--without-http_scgi_module"
+    - "--without-http_uwsgi_module"
+    - "--without-mail_pop3_module"
+    - "--without-mail_imap_module"
+    - "--without-mail_smtp_module"
+    - "--with-http_ssl_module"
+    - "--with-http_stub_status_module"
+    - "--with-http_gzip_static_module"
+    - "--add-module=/tmp/ngx_devel_kit-{{ngx_devel_kit_version}}"
+    - "--add-module=/tmp/ngx_postgres-{{ngx_postgres_version}}"
+    - "--add-module=/tmp/ngx_lua"
+    - "--with-ld-opt=-Wl,-rpath,/usr/local/lib"
+
+
+  tasks:
+
+    - name: Make init script executable
+      shell: chmod +x /etc/init.d/nginx
+
+    - name: Create nginx log folder
+      file: path=/var/log/nginx state=directory mode=0755
+
+    - name: Update apt-get
+      apt: update_cache=yes
+
+    - name: Install dependencies
+      apt: name="{{item}}" state=installed
+      with_items: "{{dependencies}}"
+
+    # LuaJIT
+
+    - name: LuaJIT - download
+      get_url: url=http://luajit.org/download/LuaJIT-{{luajit_version}}.tar.gz dest=/tmp/{{luajit_version}}.tar.gz
+
+    - name: LuaJIT - unpack
+      command: tar -zxvf /tmp/{{luajit_version}}.tar.gz chdir=/tmp creates=/tmp/LuaJIT-{{luajit_version}}
+
+    - name: LuaJIT - compile
+      shell: >
+        cd /tmp/LuaJIT-{{luajit_version}} &&
+        make &&
+        make install
+
+    # LuaRocks
+
+    - name: LuaRocks - download
+      get_url: url=http://keplerproject.github.io/luarocks/releases/luarocks-{{luarocks_version}}.tar.gz dest=/tmp/luarocks-{{luarocks_version}}.tar.gz
+
+    - name: LuaRocks - unpack
+      command: tar -zxvf /tmp/luarocks-{{luarocks_version}}.tar.gz chdir=/tmp creates=/tmp/luarocks-{{luarocks_version}}
+
+    - name: LuaRocks - compile
+      shell: >
+        cd /tmp/luarocks-{{luarocks_version}} &&
+        ./configure &&
+        make build &&
+        make install
+
+    - name: Install pgmoon
+      shell: >
+        luarocks install pgmoon
+
+
+    # OpenSSL
+    - name: openssl - download
+      get_url: url=https://www.openssl.org/source/openssl-{{openssl_version}}.tar.gz dest=/tmp/openssl-{{openssl_version}}.tar.gz
+
+    - name:  openssl - unpack
+      command: tar -zxvf /tmp/openssl-{{openssl_version}}.tar.gz chdir=/tmp creates=/tmp/openssl-{{openssl_version}}
+
+    - name: openssl - compile
+      shell: >
+        cd /tmp/openssl-{{openssl_version}} &&
+        ./config --prefix=/usr/ &&
+        make &&
+        make install
+
+    # ngx_lua
+    # SEE https://github.com/openresty/lua-nginx-module/issues/331#issuecomment-77279170
+
+    - name: ngx_lua - clone
+      git: repo=https://github.com/openresty/lua-nginx-module.git
+           dest=/tmp/ngx_lua
+           version=ssl-cert-by-lua
+           accept_hostkey=yes
+
+    - name: resty-core - download
+      get_url: url=https://github.com/openresty/lua-resty-core/archive/v0.1.1.tar.gz dest=/tmp/resty-core.tar.gz
+
+    - name: resty-core - unpack
+      command: tar -zxvf /tmp/resty-core.tar.gz chdir=/tmp creates=/tmp/lua-resty-core-0.1.1
+
+    # Devel kit
+
+    - name: ngx_devel_kit - download
+      get_url: url="https://github.com/simpl/ngx_devel_kit/archive/v{{ngx_devel_kit_version}}.tar.gz" dest="/tmp/ngx-develkit-{{ngx_devel_kit_version}}.tar.gz"
+
+    - name: ngx_devel_kit - unpack
+      command: tar -xvzf /tmp/ngx-develkit-{{ngx_devel_kit_version}}.tar.gz chdir=/tmp creates=/tmp/ngx_devel_kit-{{ngx_devel_kit_version}}
+
+    # Postgres
+
+    - name: ngx_postgres - download
+      get_url: url="https://github.com/FRiCKLE/ngx_postgres/archive/{{ngx_postgres_version}}.tar.gz" dest="/tmp/ngx-postgres-{{ngx_postgres_version}}.tar.gz"
+
+    - name: ngx_postgres - unpack
+      command: tar -xvzf /tmp/ngx-postgres-{{ngx_postgres_version}}.tar.gz chdir=/tmp creates=/tmp/ngx_postgres-{{ngx_postgres_version}}
+
+    # NGINX
+
+    - name: nginx - download
+      get_url: url=http://nginx.org/download/nginx-{{nginx_version}}.tar.gz dest="/tmp/nginx-{{nginx_version}}.tar.gz"
+
+    - name: nginx - unpack
+      command: tar -xvzf /tmp/nginx-{{nginx_version}}.tar.gz
+               chdir=/tmp creates=/tmp/nginx-{{nginx_version}}/README
+
+    - name: nginx - apply patch
+      shell: >
+        cd /tmp/nginx-{{nginx_version}} &&
+        patch -p1 < /tmp/nginx-ssl-cert.patch
+
+    - name: nginx - compile
+      shell: >
+        cd /tmp/nginx-{{nginx_version}} &&
+        ./configure {{flags|join(' ')}} &&
+        make &&
+        make install
+      environment:
+        LD_LIBRARY_PATH: /usr/local/lib
+        LUAJIT_LIB: /usr/local/lib/
+        LUAJIT_INC: /usr/local/include/luajit-2.0/
+
+    - name: nginx - Start
+      service: name=nginx state=started
